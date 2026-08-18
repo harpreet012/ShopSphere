@@ -11,14 +11,26 @@ pipeline {
                 artifactNumToKeepStr: '10'
             )
         )
+
+        // Prevent a stuck stage from running forever
+        timeout(time: 20, unit: 'MINUTES')
     }
 
     environment {
         COMPOSE_PROJECT_NAME = 'shopsphere-ci'
         DOCKER_BUILDKIT = '1'
+        NPM_CONFIG_AUDIT = 'false'
+        NPM_CONFIG_FUND = 'false'
+        NPM_CONFIG_PREFER_OFFLINE = 'true'
     }
 
     stages {
+
+        stage('Clean Workspace') {
+            steps {
+                deleteDir()
+            }
+        }
 
         stage('Checkout') {
             steps {
@@ -44,36 +56,59 @@ pipeline {
                 bat 'git --version'
                 bat 'node --version'
                 bat 'npm --version'
+                bat 'npm config get registry'
                 bat 'docker --version'
                 bat 'docker compose version'
             }
         }
 
         stage('Backend - Install Dependencies') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 dir('server') {
-                    bat 'npm ci'
+                    bat '''
+                        echo Installing backend dependencies...
+                        npm ci --no-audit --no-fund --prefer-offline
+                    '''
                 }
             }
         }
 
         stage('Backend - Tests') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 dir('server') {
-                    bat 'npm test -- --ci'
+                    bat 'npm test -- --ci --forceExit'
                 }
             }
         }
 
         stage('Frontend - Install Dependencies') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 dir('client') {
-                    bat 'npm ci'
+                    bat '''
+                        echo Installing frontend dependencies...
+                        npm ci --no-audit --no-fund --prefer-offline
+                    '''
                 }
             }
         }
 
         stage('Frontend - Production Build') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 dir('client') {
                     bat 'npm run build'
@@ -88,6 +123,10 @@ pipeline {
         }
 
         stage('Docker - Build Images') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+
             steps {
                 bat 'docker compose build --pull'
             }
@@ -102,12 +141,14 @@ pipeline {
     }
 
     post {
+
         success {
             echo '''
 ==================================================
 ShopSphere CI PIPELINE SUCCESS
 ==================================================
 Checkout       : PASS
+Environment    : PASS
 Backend Tests  : PASS
 Frontend Build : PASS
 Docker Config  : PASS
