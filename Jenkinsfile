@@ -5,6 +5,7 @@ pipeline {
         skipDefaultCheckout(true)
         timestamps()
         disableConcurrentBuilds()
+
         buildDiscarder(
             logRotator(
                 numToKeepStr: '10',
@@ -12,30 +13,31 @@ pipeline {
             )
         )
 
-        // Prevent a stuck stage from running forever
+        // Prevent the entire pipeline from running forever
         timeout(time: 20, unit: 'MINUTES')
     }
 
     environment {
         COMPOSE_PROJECT_NAME = 'shopsphere-ci'
         DOCKER_BUILDKIT = '1'
+
+        // NPM reliability
         NPM_CONFIG_AUDIT = 'false'
         NPM_CONFIG_FUND = 'false'
         NPM_CONFIG_PREFER_OFFLINE = 'true'
-        
-        // ===== NPM NETWORK TIMEOUT CONFIGURATION =====
-        // Prevents npm from silently waiting indefinitely on network requests
+
+        // Prevent npm from waiting indefinitely on network requests
         NPM_CONFIG_FETCH_RETRIES = '2'
         NPM_CONFIG_FETCH_RETRY_MINTIMEOUT = '5000'
         NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT = '15000'
         NPM_CONFIG_FETCH_TIMEOUT = '60000'
-        // =============================================
     }
 
     stages {
 
         stage('Clean Workspace') {
             steps {
+                echo 'Cleaning Jenkins workspace...'
                 deleteDir()
             }
         }
@@ -78,11 +80,15 @@ pipeline {
             steps {
                 dir('server') {
                     bat '''
-                        echo ========== BACKEND DEPENDENCY INSTALLATION ==========
-                        echo [%date% %time%] Starting npm ci with diagnostic flags...
+                        echo ==================================================
+                        echo BACKEND DEPENDENCY INSTALLATION
+                        echo ==================================================
+                        echo [%date% %time%] Starting npm ci...
+
                         npm ci --no-audit --no-fund --prefer-offline --ignore-scripts --loglevel=verbose
+
                         echo [%date% %time%] Backend dependencies installed successfully
-                        echo ======================================================
+                        echo ==================================================
                     '''
                 }
             }
@@ -95,7 +101,17 @@ pipeline {
 
             steps {
                 dir('server') {
-                    bat 'npm test -- --ci --forceExit'
+                    bat '''
+                        echo ==================================================
+                        echo BACKEND TESTS
+                        echo ==================================================
+
+                        npm test -- --ci --forceExit
+
+                        echo ==================================================
+                        echo BACKEND TESTS COMPLETED
+                        echo ==================================================
+                    '''
                 }
             }
         }
@@ -108,11 +124,15 @@ pipeline {
             steps {
                 dir('client') {
                     bat '''
-                        echo ========== FRONTEND DEPENDENCY INSTALLATION ==========
-                        echo [%date% %time%] Starting npm ci with diagnostic flags...
+                        echo ==================================================
+                        echo FRONTEND DEPENDENCY INSTALLATION
+                        echo ==================================================
+                        echo [%date% %time%] Starting npm ci...
+
                         npm ci --no-audit --no-fund --prefer-offline --ignore-scripts --loglevel=verbose
+
                         echo [%date% %time%] Frontend dependencies installed successfully
-                        echo ======================================================
+                        echo ==================================================
                     '''
                 }
             }
@@ -125,14 +145,55 @@ pipeline {
 
             steps {
                 dir('client') {
-                    bat 'npm run build'
+                    bat '''
+                        echo ==================================================
+                        echo FRONTEND PRODUCTION BUILD
+                        echo ==================================================
+
+                        npm run build
+
+                        echo ==================================================
+                        echo FRONTEND BUILD COMPLETED
+                        echo ==================================================
+                    '''
                 }
+            }
+        }
+
+        stage('Prepare CI Environment') {
+            steps {
+                bat '''
+                    echo ==================================================
+                    echo PREPARING CI ENVIRONMENT
+                    echo ==================================================
+
+                    if not exist server\\.env (
+                        echo server\\.env not found.
+                        echo Creating temporary CI environment from server\\.env.example...
+                        copy /Y server\\.env.example server\\.env
+                    ) else (
+                        echo server\\.env already exists.
+                    )
+
+                    echo CI environment prepared successfully.
+                    echo ==================================================
+                '''
             }
         }
 
         stage('Docker - Compose Validation') {
             steps {
-                bat 'docker compose config'
+                bat '''
+                    echo ==================================================
+                    echo DOCKER COMPOSE VALIDATION
+                    echo ==================================================
+
+                    docker compose config
+
+                    echo ==================================================
+                    echo DOCKER COMPOSE CONFIG VALID
+                    echo ==================================================
+                '''
             }
         }
 
@@ -142,14 +203,33 @@ pipeline {
             }
 
             steps {
-                bat 'docker compose build --pull'
+                bat '''
+                    echo ==================================================
+                    echo DOCKER IMAGE BUILD
+                    echo ==================================================
+
+                    docker compose build --pull
+
+                    echo ==================================================
+                    echo DOCKER IMAGE BUILD COMPLETED
+                    echo ==================================================
+                '''
             }
         }
 
         stage('Docker - Image Verification') {
             steps {
-                bat 'docker image inspect shopsphere-backend:latest'
-                bat 'docker image inspect shopsphere-frontend:latest'
+                bat '''
+                    echo ==================================================
+                    echo DOCKER IMAGE VERIFICATION
+                    echo ==================================================
+
+                    docker image inspect shopsphere-backend:latest
+                    docker image inspect shopsphere-frontend:latest
+
+                    echo Docker images verified successfully.
+                    echo ==================================================
+                '''
             }
         }
     }
@@ -158,28 +238,48 @@ pipeline {
 
         success {
             echo '''
-==================================================
-ShopSphere CI PIPELINE SUCCESS
-==================================================
-Checkout       : PASS
-Environment    : PASS
-Backend Tests  : PASS
-Frontend Build : PASS
-Docker Config  : PASS
-Docker Build   : PASS
-Image Verify   : PASS
-==================================================
+==========================================================
+             SHOPSPHERE CI PIPELINE SUCCESS
+==========================================================
+
+Checkout                    : PASS
+Environment Check           : PASS
+Backend Dependencies        : PASS
+Backend Tests               : PASS
+Frontend Dependencies       : PASS
+Frontend Production Build   : PASS
+CI Environment Preparation  : PASS
+Docker Compose Validation   : PASS
+Docker Image Build          : PASS
+Docker Image Verification   : PASS
+
+==========================================================
+                 BUILD COMPLETED SUCCESSFULLY
+==========================================================
 '''
         }
 
         failure {
             echo '''
-==================================================
-ShopSphere CI PIPELINE FAILED
-==================================================
+==========================================================
+             SHOPSPHERE CI PIPELINE FAILED
+==========================================================
+
 Check the failed stage in Console Output.
-Look for verbose npm logs above timeout message.
-==================================================
+
+==========================================================
+'''
+        }
+
+        aborted {
+            echo '''
+==========================================================
+             SHOPSPHERE CI PIPELINE ABORTED
+==========================================================
+
+The pipeline was stopped manually or reached a timeout.
+
+==========================================================
 '''
         }
 
