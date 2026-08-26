@@ -20,6 +20,7 @@ pipeline {
     environment {
         COMPOSE_PROJECT_NAME = 'shopsphere-ci'
         DOCKER_BUILDKIT = '1'
+        DOCKER_HOST = 'npipe:////./pipe/dockerDesktopLinuxEngine'
 
         // NPM reliability
         NPM_CONFIG_AUDIT = 'false'
@@ -67,8 +68,10 @@ pipeline {
                 bat 'node --version'
                 bat 'npm --version'
                 bat 'npm config get registry'
+                bat 'echo DOCKER_HOST=%DOCKER_HOST%'
                 bat 'docker --version'
                 bat 'docker compose version'
+                bat 'docker info'
             }
         }
 
