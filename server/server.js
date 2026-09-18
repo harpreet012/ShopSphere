@@ -74,7 +74,7 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 if (require.main === module) {
-  app.listen(PORT, () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(
       `ShopSphere server running on port ${PORT} in ${process.env.NODE_ENV || "development"} mode`,
     );
